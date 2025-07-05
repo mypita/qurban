@@ -183,7 +183,7 @@ $orders = getOrders($conn);
         <div class="navbar-wrapper">
             <div class="m-header">
                 <a href="../dashboard/index.html" class="b-brand text-primary">
-                    <!-- ========   Change your logo from here   ============ -->
+                    <!-- ========   Change your logo from here    ============ -->
                     <img src="../assets/images/logo-dark.svg" class="img-fluid logo-lg" alt="logo">
                 </a>
             </div>
@@ -354,6 +354,11 @@ $orders = getOrders($conn);
                                                 </td>
                                                 <td><?php echo date('d M Y', strtotime($order['created_at'])); ?></td>
                                                 <td class="text-end">
+                                                    <?php if (!empty($order['payment_proof'])): ?>
+                                                        <a href="../<?php echo htmlspecialchars($order['payment_proof']); ?>" target="_blank" class="btn btn-sm btn-outline-info me-1" title="Lihat Bukti Transfer">
+                                                            <i class="fas fa-receipt"></i>
+                                                        </a>
+                                                    <?php endif; ?>
                                                     <button class="btn btn-sm btn-outline-primary edit-btn"
                                                         data-bs-toggle="modal" data-bs-target="#editModal"
                                                         data-orderid="<?php echo $order['id']; ?>"

@@ -339,9 +339,16 @@ switch ($method) {
 
                 // Handle file upload
                 if (isset($_FILES['payment_proof']) && $_FILES['payment_proof']['error'] == UPLOAD_ERR_OK) {
-                    $target_dir = "assets/payment_proofs/";
+                    $target_dir = "../assets/payment_proofs/"; // Sesuaikan path ini untuk admin panel
                     if (!is_dir($target_dir)) {
-                        mkdir($target_dir, 0777, true); // Buat direktori jika belum ada
+                        // Tambahkan log untuk debugging
+                        error_log("Target directory does not exist: " . $target_dir);
+                        if (!mkdir($target_dir, 0777, true)) {
+                            error_log("Failed to create directory: " . $target_dir);
+                            http_response_code(500);
+                            echo json_encode(['success' => false, 'message' => "Gagal membuat direktori unggahan. Periksa izin server."]);
+                            exit;
+                        }
                     }
 
                     $file_extension = pathinfo($_FILES['payment_proof']['name'], PATHINFO_EXTENSION);
@@ -361,21 +368,73 @@ switch ($method) {
                         exit;
                     } else {
                         if (move_uploaded_file($_FILES['payment_proof']['tmp_name'], $target_file)) {
-                            $payment_proof = $target_file;
+                            $payment_proof = str_replace('../', '', $target_file); // Simpan path relatif ke database
 
                             // Hapus bukti transfer lama jika ada
-                            if (!empty($order_data['payment_proof']) && file_exists($order_data['payment_proof'])) {
-                                unlink($order_data['payment_proof']);
+                            if (!empty($order_data['payment_proof'])) {
+                                $old_proof_path = '../' . $order_data['payment_proof']; // Konversi path database ke path fisik
+                                if (file_exists($old_proof_path)) {
+                                    unlink($old_proof_path);
+                                }
                             }
                         } else {
+                            // Tambahkan detail error upload
+                            $upload_error_code = $_FILES['payment_proof']['error'];
+                            $upload_error_message = "Gagal mengupload bukti transfer baru. Kode error: " . $upload_error_code;
+                            switch ($upload_error_code) {
+                                case UPLOAD_ERR_INI_SIZE:
+                                case UPLOAD_ERR_FORM_SIZE:
+                                    $upload_error_message .= " (Ukuran file melebihi batas PHP.ini)";
+                                    break;
+                                case UPLOAD_ERR_PARTIAL:
+                                    $upload_error_message .= " (File hanya terunggah sebagian)";
+                                    break;
+                                case UPLOAD_ERR_NO_FILE:
+                                    $upload_error_message .= " (Tidak ada file yang diunggah)";
+                                    break;
+                                case UPLOAD_ERR_NO_TMP_DIR:
+                                    $upload_error_message .= " (Direktori sementara tidak ditemukan)";
+                                    break;
+                                case UPLOAD_ERR_CANT_WRITE:
+                                    $upload_error_message .= " (Gagal menulis file ke disk. Periksa izin direktori.)";
+                                    break;
+                                case UPLOAD_ERR_EXTENSION:
+                                    $upload_error_message .= " (Ekstensi PHP menghentikan unggahan file)";
+                                    break;
+                            }
+                            error_log($upload_error_message);
                             http_response_code(500);
-                            echo json_encode(['success' => false, 'message' => "Gagal mengupload bukti transfer baru."]);
+                            echo json_encode(['success' => false, 'message' => $upload_error_message]);
                             exit;
                         }
                     }
                 } else {
+                    // Jika tidak ada file diupload atau ada error awal
+                    $upload_error_code = $_FILES['payment_proof']['error'] ?? UPLOAD_ERR_NO_FILE;
+                    $upload_error_message = "Tidak ada file bukti transfer yang diupload atau terjadi error. Kode error: " . $upload_error_code;
+                    switch ($upload_error_code) {
+                        case UPLOAD_ERR_INI_SIZE:
+                        case UPLOAD_ERR_FORM_SIZE:
+                            $upload_error_message = "Ukuran file melebihi batas yang diizinkan.";
+                            break;
+                        case UPLOAD_ERR_PARTIAL:
+                            $upload_error_message = "File hanya terunggah sebagian.";
+                            break;
+                        case UPLOAD_ERR_NO_FILE:
+                            $upload_error_message = "Tidak ada file yang diunggah.";
+                            break;
+                        case UPLOAD_ERR_NO_TMP_DIR:
+                            $upload_error_message = "Direktori sementara untuk unggahan tidak ditemukan.";
+                            break;
+                        case UPLOAD_ERR_CANT_WRITE:
+                            $upload_error_message = "Gagal menulis file ke disk. Periksa izin direktori.";
+                            break;
+                        case UPLOAD_ERR_EXTENSION:
+                            $upload_error_message = "Ekstensi PHP menghentikan unggahan file.";
+                            break;
+                    }
                     http_response_code(400);
-                    echo json_encode(['success' => false, 'message' => 'Tidak ada file bukti transfer yang diupload.']);
+                    echo json_encode(['success' => false, 'message' => $upload_error_message]);
                     exit;
                 }
 

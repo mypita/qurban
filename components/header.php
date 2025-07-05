@@ -174,7 +174,7 @@ License: https://freebootstrap.net/license
                                 </a>
                                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownUser">
                                     <!-- <li><a class="dropdown-item" href="profile.php">Profile</a></li> -->
-                                    <li><a class="dropdown-item" href="checkout.php">My Orders</a></li>
+                                    <li><a class="dropdown-item" href="orders.php">My Orders</a></li>
                                     <li>
                                         <hr class="dropdown-divider">
                                     </li>
