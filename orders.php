@@ -104,6 +104,9 @@ $status_text_map = [
                 </div>
             <?php endif; ?>
 
+            <!-- Area untuk menampilkan pesan AJAX (tetap ada jika ada fitur AJAX lain di masa depan) -->
+            <div id="ajax-message-area" class="mb-4"></div>
+
             <?php if (empty($user_orders)): ?>
                 <div class="card shadow-sm">
                     <div class="card-body text-center py-5">
@@ -144,9 +147,29 @@ $status_text_map = [
                                         <?php if ($order['payment_method'] == 'manual_transfer' && $order['bank_name']): ?>
                                             <li class="list-group-item"><strong>Tujuan Transfer:</strong> <?= htmlspecialchars($order['bank_name']) ?> (<?= htmlspecialchars($order['account_number']) ?>) a.n. <?= htmlspecialchars($order['account_owner']) ?></li>
                                         <?php endif; ?>
-                                        <?php if ($order['payment_proof']): ?>
-                                            <li class="list-group-item"><strong>Bukti Transfer:</strong> <a href="<?= htmlspecialchars($order['payment_proof']) ?>" target="_blank" class="btn btn-sm btn-outline-primary mt-2"><i class="bi bi-file-earmark-image"></i> Lihat Bukti</a></li>
-                                        <?php endif; ?>
+                                        <li class="list-group-item" id="payment-proof-row-<?= $order['id'] ?>">
+                                            <strong>Bukti Transfer:</strong> 
+                                            <?php if ($order['payment_proof']): 
+                                                $file_extension = pathinfo($order['payment_proof'], PATHINFO_EXTENSION);
+                                                $is_image = in_array(strtolower($file_extension), ['jpg', 'jpeg', 'png', 'gif']);
+                                            ?>
+                                                <?php if ($is_image): ?>
+                                                    <div class="mt-2">
+                                                        <a href="<?= htmlspecialchars($order['payment_proof']) ?>" target="_blank">
+                                                            <img src="<?= htmlspecialchars($order['payment_proof']) ?>" alt="Bukti Transfer" style="max-width: 200px; height: auto; border-radius: 8px; border: 1px solid #ddd;">
+                                                        </a>
+                                                    </div>
+                                                <?php else: // Assume PDF or other document ?>
+                                                    <div class="mt-2">
+                                                        <a href="<?= htmlspecialchars($order['payment_proof']) ?>" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                            <i class="bi bi-file-earmark-pdf"></i> Lihat PDF Bukti
+                                                        </a>
+                                                    </div>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <span class="text-muted">Belum ada bukti transfer.</span>
+                                            <?php endif; ?>
+                                        </li>
                                     </ul>
 
                                     <h5 class="mt-4 mb-3">Item Pesanan</h5>
@@ -197,3 +220,86 @@ $status_text_map = [
 </main>
 
 <?php include 'components/footer.php'; ?>
+
+<script>
+    // Fungsi displayAjaxMessage tetap dipertahankan jika ada fitur AJAX lain di orders.php
+    function displayAjaxMessage(message, type) {
+        const messageArea = document.getElementById('ajax-message-area');
+        if (messageArea) {
+            messageArea.innerHTML = ''; // Hapus pesan sebelumnya
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show text-center`;
+            alertDiv.setAttribute('role', 'alert');
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            messageArea.appendChild(alertDiv);
+
+            setTimeout(() => {
+                const bsAlert = new bootstrap.Alert(alertDiv);
+                bsAlert.close();
+            }, 5000); // Sembunyikan setelah 5 detik
+        }
+    }
+
+    // Hapus semua JavaScript yang terkait dengan modal upload bukti transfer karena modal dan tombolnya dihapus.
+    // document.addEventListener('DOMContentLoaded', function() {
+    //     document.querySelectorAll('.upload-proof-btn').forEach(button => {
+    //         button.addEventListener('click', function() {
+    //             const orderId = this.dataset.orderId;
+    //             document.getElementById('upload_order_id').value = orderId;
+    //         });
+    //     });
+
+    //     const uploadProofForm = document.getElementById('upload-proof-form');
+    //     if (uploadProofForm) {
+    //         uploadProofForm.addEventListener('submit', function(e) {
+    //             e.preventDefault();
+    //             const formData = new FormData(this);
+    //             const orderId = document.getElementById('upload_order_id').value;
+    //             fetch('services/servicepaketQurban.php', {
+    //                 method: 'POST',
+    //                 body: formData
+    //             })
+    //             .then(response => {
+    //                 if (response.status === 401) {
+    //                     window.location.href = 'login.php';
+    //                     return Promise.reject('Unauthorized');
+    //                 }
+    //                 return response.json();
+    //             })
+    //             .then(data => {
+    //                 if (data.success) {
+    //                     displayAjaxMessage(data.message, 'success');
+    //                     const modal = bootstrap.Modal.getInstance(document.getElementById('uploadProofModal'));
+    //                     if (modal) modal.hide();
+    //                     const proofLinkContainer = document.getElementById(`payment-proof-row-${orderId}`);
+    //                     if (proofLinkContainer) {
+    //                         proofLinkContainer.innerHTML = `
+    //                             <strong>Bukti Transfer:</strong> 
+    //                             <a href="${data.new_proof_url}" target="_blank" class="btn btn-sm btn-outline-primary mt-2" id="proof-link-${orderId}"><i class="bi bi-file-earmark-image"></i> Lihat Bukti</a>
+    //                             <button type="button" class="btn btn-sm btn-info mt-2 ms-2 upload-proof-btn" data-bs-toggle="modal" data-bs-target="#uploadProofModal" data-order-id="${orderId}">
+    //                                 <i class="bi bi-upload"></i> Edit Bukti
+    //                             </button>
+    //                         `;
+    //                         proofLinkContainer.querySelector('.upload-proof-btn').addEventListener('click', function() {
+    //                             const orderId = this.dataset.orderId;
+    //                             document.getElementById('upload_order_id').value = orderId;
+    //                         });
+    //                     }
+    //                     uploadProofForm.reset();
+    //                 } else {
+    //                     displayAjaxMessage(data.message || 'Gagal mengupload bukti transfer.', 'danger');
+    //                 }
+    //             })
+    //             .catch(error => {
+    //                 console.error('Error:', error);
+    //                 if (error !== 'Unauthorized') {
+    //                     displayAjaxMessage('Terjadi kesalahan saat mengupload bukti transfer.', 'danger');
+    //                 }
+    //             });
+    //         });
+    //     }
+    // });
+</script>

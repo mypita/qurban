@@ -191,7 +191,7 @@ switch ($method) {
         break;
 
     case 'POST':
-        // Pastikan pengguna sudah login untuk semua operasi POST yang terkait keranjang
+        // Pastikan pengguna sudah login untuk semua operasi POST yang terkait keranjang/pesanan
         if (!isset($_SESSION['user_id'])) {
             http_response_code(401); // Unauthorized
             echo json_encode(['success' => false, 'message' => 'Anda harus login untuk melakukan aksi ini.']);
@@ -200,11 +200,10 @@ switch ($method) {
         $user_id = $_SESSION['user_id'];
 
         $action = isset($_POST['action']) ? clean_input($_POST['action']) : null;
-        $data = json_decode(file_get_contents('php://input'), true); // Untuk JSON body jika ada
-
-        // Prioritaskan $_POST untuk form-data, lalu $data untuk json
-        if ($action === null && isset($data['action'])) {
-            $action = clean_input($data['action']);
+        // Jika action tidak ditemukan di $_POST, coba dari JSON body (untuk aksi lain yang mungkin menggunakan JSON)
+        if ($action === null) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $action = isset($data['action']) ? clean_input($data['action']) : null;
         }
 
         switch ($action) {
@@ -255,7 +254,6 @@ switch ($method) {
                 break;
 
             case 'update_cart_quantity':
-                // Menerima array kuantitas dari form
                 $quantities = isset($_POST['quantities']) ? $_POST['quantities'] : [];
 
                 $conn->begin_transaction();
@@ -264,7 +262,6 @@ switch ($method) {
                         $cart_id = clean_input($cart_id);
                         $quantity = clean_input($quantity);
 
-                        // Ambil animal_id dari cart untuk validasi stok
                         $animal_id_query = $conn->prepare("SELECT animal_id FROM carts WHERE id = ? AND user_id = ?");
                         $animal_id_query->bind_param("ii", $cart_id, $user_id);
                         $animal_id_query->execute();
@@ -277,7 +274,6 @@ switch ($method) {
                         }
                         $current_animal_id = $animal_id_data['animal_id'];
 
-                        // Dapatkan stok hewan saat ini
                         $stock_query = $conn->prepare("SELECT stock FROM animals WHERE id = ?");
                         $stock_query->bind_param("i", $current_animal_id);
                         $stock_query->execute();
@@ -288,15 +284,12 @@ switch ($method) {
                         $available_stock = $stock_data['stock'];
 
                         if ($quantity <= 0) {
-                            // Hapus item jika kuantitas 0 atau kurang
                             $stmt = $conn->prepare("DELETE FROM carts WHERE id = ? AND user_id = ?");
                             $stmt->bind_param("ii", $cart_id, $user_id);
                         } else {
-                            // Validasi stok sebelum update
                             if ($quantity > $available_stock) {
                                 throw new Exception("Stok tidak mencukupi untuk item ini. Stok tersedia: " . $available_stock);
                             }
-                            // Perbarui kuantitas
                             $stmt = $conn->prepare("UPDATE carts SET quantity = ? WHERE id = ? AND user_id = ?");
                             $stmt->bind_param("iii", $quantity, $cart_id, $user_id);
                         }
@@ -316,7 +309,96 @@ switch ($method) {
                 }
                 break;
 
+            case 'update_payment_proof':
+                $order_id = isset($_POST['order_id']) ? clean_input($_POST['order_id']) : null;
+                $payment_proof = null;
+
+                if ($order_id === null) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'message' => 'ID Pesanan tidak valid.']);
+                    exit;
+                }
+
+                // Verifikasi bahwa pesanan ini milik user yang sedang login dan statusnya pending
+                $check_order_stmt = $conn->prepare("SELECT status, payment_proof FROM orders WHERE id = ? AND user_id = ?");
+                $check_order_stmt->bind_param("ii", $order_id, $user_id);
+                $check_order_stmt->execute();
+                $order_data = $check_order_stmt->get_result()->fetch_assoc();
+                $check_order_stmt->close();
+
+                if (!$order_data) {
+                    http_response_code(403); // Forbidden
+                    echo json_encode(['success' => false, 'message' => 'Pesanan tidak ditemukan atau Anda tidak memiliki akses.']);
+                    exit;
+                }
+                if ($order_data['status'] !== 'pending') {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'message' => 'Bukti transfer hanya bisa diubah untuk pesanan dengan status "Menunggu Pembayaran".']);
+                    exit;
+                }
+
+                // Handle file upload
+                if (isset($_FILES['payment_proof']) && $_FILES['payment_proof']['error'] == UPLOAD_ERR_OK) {
+                    $target_dir = "assets/payment_proofs/";
+                    if (!is_dir($target_dir)) {
+                        mkdir($target_dir, 0777, true); // Buat direktori jika belum ada
+                    }
+
+                    $file_extension = pathinfo($_FILES['payment_proof']['name'], PATHINFO_EXTENSION);
+                    $new_file_name = uniqid('proof_') . '.' . $file_extension;
+                    $target_file = $target_dir . $new_file_name;
+                    $imageFileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
+
+                    // Periksa tipe file
+                    $allowed_types = ['jpg', 'jpeg', 'png', 'pdf'];
+                    if (!in_array($imageFileType, $allowed_types)) {
+                        http_response_code(400);
+                        echo json_encode(['success' => false, 'message' => "Maaf, hanya file JPG, JPEG, PNG, & PDF yang diizinkan."]);
+                        exit;
+                    } elseif ($_FILES['payment_proof']['size'] > 5000000) { // 5MB max size
+                        http_response_code(400);
+                        echo json_encode(['success' => false, 'message' => "Maaf, ukuran file terlalu besar (maks 5MB)."]);
+                        exit;
+                    } else {
+                        if (move_uploaded_file($_FILES['payment_proof']['tmp_name'], $target_file)) {
+                            $payment_proof = $target_file;
+
+                            // Hapus bukti transfer lama jika ada
+                            if (!empty($order_data['payment_proof']) && file_exists($order_data['payment_proof'])) {
+                                unlink($order_data['payment_proof']);
+                            }
+                        } else {
+                            http_response_code(500);
+                            echo json_encode(['success' => false, 'message' => "Gagal mengupload bukti transfer baru."]);
+                            exit;
+                        }
+                    }
+                } else {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'message' => 'Tidak ada file bukti transfer yang diupload.']);
+                    exit;
+                }
+
+                // Update payment_proof di tabel orders
+                $update_proof_stmt = $conn->prepare("UPDATE orders SET payment_proof = ? WHERE id = ? AND user_id = ?");
+                if (!$update_proof_stmt) {
+                    error_log("Prepare statement failed (update_payment_proof): " . $conn->error);
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'message' => 'Terjadi kesalahan server saat memperbarui bukti.']);
+                    exit;
+                }
+                $update_proof_stmt->bind_param("sii", $payment_proof, $order_id, $user_id);
+                if ($update_proof_stmt->execute()) {
+                    echo json_encode(['success' => true, 'message' => 'Bukti transfer berhasil diperbarui.', 'new_proof_url' => $payment_proof]);
+                } else {
+                    http_response_code(500);
+                    echo json_encode(['success' => false, 'message' => 'Gagal memperbarui bukti transfer di database.']);
+                }
+                $update_proof_stmt->close();
+                break;
+
             case 'reduce_stock': // Existing action
+                // ... (logic remains the same)
                 if (isset($data['animal_id']) && isset($data['quantity'])) {
                     $success = reduceStock(clean_input($data['animal_id']), clean_input($data['quantity']));
                     echo json_encode(['success' => $success]);
@@ -327,6 +409,7 @@ switch ($method) {
                 break;
 
             case 'increase_stock': // Existing action
+                // ... (logic remains the same)
                 if (isset($data['animal_id']) && isset($data['quantity'])) {
                     $success = increaseStock(clean_input($data['animal_id']), clean_input($data['quantity']));
                     echo json_encode(['success' => $success]);
