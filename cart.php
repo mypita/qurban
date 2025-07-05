@@ -11,7 +11,7 @@ if (!isset($_SESSION['user_id'])) {
 // Function to get cart items
 function getCartItems($conn, $user_id)
 {
-  $query = "SELECT c.*, a.type, a.weight_group, a.price, a.image_url 
+  $query = "SELECT c.*, a.type, a.weight_group, a.price, a.image_url, a.description 
               FROM carts c 
               JOIN animals a ON c.animal_id = a.id 
               WHERE c.user_id = ?";
@@ -148,7 +148,7 @@ $active = 'cart';
         </div>
 
         <?php if (count($cart_items) > 0): ?>
-          <div class="col-lg-4">
+          <div class="col-lg-4 ms-auto">
             <div class="card shadow-sm summary-card">
               <div class="card-body">
                 <h5 class="card-title mb-4">Ringkasan Belanja</h5>

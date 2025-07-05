@@ -31,6 +31,10 @@ License: https://freebootstrap.net/license
     <link href="assets/css/style-index.css" rel="stylesheet">
     <!-- End Theme Style-->
 
+    <!-- Font Awesome for cart icon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+
     <!-- ======= Apply theme =======-->
     <script>
         // Apply the theme as early as possible to avoid flicker
@@ -117,23 +121,33 @@ License: https://freebootstrap.net/license
                             <a class="btn btn-outline-primary position-relative py-2" href="cart.php">
                                 <i class="bi bi-cart"></i>
                                 <?php
-                                // Count cart items if needed (you'll need to implement this query)
+                                // Pastikan koneksi database tersedia di sini.
+                                // Jika header.php di-include oleh file lain yang sudah memiliki $conn,
+                                // maka tidak perlu require_once konek.php lagi.
+                                // Asumsi $conn sudah tersedia dari file utama (misal paket.php)
                                 $cart_count = 0;
-                                if (isset($_SESSION['user_id'])) {
+                                if (isset($_SESSION['user_id']) && isset($conn)) { // Pastikan $conn ada
                                     $user_id = $_SESSION['user_id'];
-                                    $cart_query = "SELECT COUNT(*) as count FROM carts WHERE user_id = $user_id";
-                                    $cart_result = $conn->query($cart_query);
-                                    if ($cart_result) {
-                                        $cart_data = $cart_result->fetch_assoc();
-                                        $cart_count = $cart_data['count'];
+                                    $cart_query_stmt = $conn->prepare("SELECT SUM(quantity) as count FROM carts WHERE user_id = ?");
+                                    if ($cart_query_stmt) {
+                                        $cart_query_stmt->bind_param("i", $user_id);
+                                        $cart_query_stmt->execute();
+                                        $cart_result = $cart_query_stmt->get_result();
+                                        if ($cart_result) {
+                                            $cart_data = $cart_result->fetch_assoc();
+                                            $cart_count = (int)($cart_data['count'] ?? 0); // Handle NULL if no items
+                                        }
+                                        $cart_query_stmt->close();
+                                    } else {
+                                        error_log("Failed to prepare cart count statement in header: " . $conn->error);
                                     }
                                 }
-                                if ($cart_count > 0): ?>
-                                    <span
-                                        class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                                        <?php echo $cart_count; ?>
-                                    </span>
-                                <?php endif; ?>
+                                ?>
+                                <span id="cart-item-count"
+                                    class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                                    style="<?= ($cart_count > 0) ? '' : 'display: none;' ?>">
+                                    <?= $cart_count ?>
+                                </span>
                             </a>
 
                             <!-- Profile Picture (visible when logged in) -->
@@ -159,8 +173,8 @@ License: https://freebootstrap.net/license
                                         class="rounded-circle">
                                 </a>
                                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownUser">
-                                    <li><a class="dropdown-item" href="profile.php">Profile</a></li>
-                                    <li><a class="dropdown-item" href="orders.php">My Orders</a></li>
+                                    <!-- <li><a class="dropdown-item" href="profile.php">Profile</a></li> -->
+                                    <li><a class="dropdown-item" href="checkout.php">My Orders</a></li>
                                     <li>
                                         <hr class="dropdown-divider">
                                     </li>

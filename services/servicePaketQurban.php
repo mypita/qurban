@@ -4,13 +4,13 @@ require_once 'konek.php'; // Sesuaikan path ke file koneksi database Anda
 
 header('Content-Type: application/json');
 
-// Fungsi untuk membersihkan input (contoh dasar, bisa dikembangkan lebih lanjut)
-function clean_input($data) {
-    $data = trim($data);
-    $data = stripslashes($data);
-    $data = htmlspecialchars($data);
-    return $data;
-}
+// Hapus fungsi clean_input() dari sini karena sudah dideklarasikan di konek.php
+// function clean_input($data) {
+//     $data = trim($data);
+//     $data = stripslashes($data);
+//     $data = htmlspecialchars($data);
+//     return $data;
+// }
 
 /**
  * Fungsi untuk menambahkan item ke keranjang belanja.
@@ -55,6 +55,28 @@ function addToCart($conn, $user_id, $animal_id)
         return $insert_stmt->execute();
     }
 }
+
+/**
+ * Fungsi untuk mendapatkan jumlah total item di keranjang belanja pengguna.
+ *
+ * @param mysqli $conn Objek koneksi database.
+ * @param int $user_id ID pengguna.
+ * @return int Jumlah total item di keranjang.
+ */
+function getUserCartCount($conn, $user_id) {
+    $stmt = $conn->prepare("SELECT SUM(quantity) as total_items FROM carts WHERE user_id = ?");
+    if (!$stmt) {
+        error_log("Prepare statement failed (getUserCartCount): " . $conn->error);
+        return 0;
+    }
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    // Jika tidak ada item di keranjang, SUM akan mengembalikan NULL, jadi pastikan mengembalikan 0
+    return (int)($row['total_items'] ?? 0);
+}
+
 
 // --- Fungsi-fungsi yang sudah ada sebelumnya (tetap dipertahankan) ---
 
@@ -163,7 +185,8 @@ switch ($method) {
             }
 
             if (addToCart($conn, $user_id, $animal_id)) {
-                echo json_encode(['success' => true, 'message' => 'Item berhasil ditambahkan ke keranjang.']);
+                $new_cart_count = getUserCartCount($conn, $user_id); // Dapatkan jumlah keranjang terbaru
+                echo json_encode(['success' => true, 'message' => 'Item berhasil ditambahkan ke keranjang.', 'cart_count' => $new_cart_count]);
             } else {
                 http_response_code(500); // Internal Server Error
                 echo json_encode(['success' => false, 'message' => 'Gagal menambahkan item ke keranjang. Silakan coba lagi.']);
