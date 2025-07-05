@@ -74,6 +74,16 @@ try {
 }
 
 $active = 'orders'; // Untuk menandai menu aktif di header
+
+// Definisi teks status yang konsisten dengan halaman admin Anda
+$status_text_map = [
+    'pending' => 'Menunggu Pembayaran',
+    'paid' => 'Telah Dibayar',
+    'processed' => 'Diproses',
+    'shipped' => 'Dikirim',
+    'delivered' => 'Terkirim',
+    'cancelled' => 'Dibatalkan'
+];
 ?>
 
 <?php include 'components/header.php'; ?>
@@ -117,7 +127,7 @@ $active = 'orders'; // Untuk menandai menu aktif di header
                                         ($order['status'] == 'shipped' ? 'secondary' : 
                                         ($order['status'] == 'delivered' ? 'success' : 'danger')))) 
                                     ?>">
-                                        <?= htmlspecialchars(ucwords($order['status'])) ?>
+                                        <?= htmlspecialchars($status_text_map[$order['status']] ?? ucwords($order['status'])) ?>
                                     </span>
                                     <span class="ms-auto text-muted">Total: Rp <?= number_format($order['total_price'], 0, ',', '.') ?></span>
                                 </button>
