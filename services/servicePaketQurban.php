@@ -1,0 +1,216 @@
+<?php
+session_start(); // Pastikan session dimulai untuk mengakses $_SESSION['user_id']
+require_once 'konek.php'; // Sesuaikan path ke file koneksi database Anda
+
+header('Content-Type: application/json');
+
+// Fungsi untuk membersihkan input (contoh dasar, bisa dikembangkan lebih lanjut)
+function clean_input($data) {
+    $data = trim($data);
+    $data = stripslashes($data);
+    $data = htmlspecialchars($data);
+    return $data;
+}
+
+/**
+ * Fungsi untuk menambahkan item ke keranjang belanja.
+ * Jika item sudah ada, kuantitasnya akan diperbarui. Jika belum, item baru akan ditambahkan.
+ *
+ * @param mysqli $conn Objek koneksi database.
+ * @param int $user_id ID pengguna yang sedang login.
+ * @param int $animal_id ID hewan yang akan ditambahkan.
+ * @return bool True jika operasi berhasil, false jika gagal.
+ */
+function addToCart($conn, $user_id, $animal_id)
+{
+    // Periksa apakah item sudah ada di keranjang untuk pengguna ini dan hewan ini
+    $check_stmt = $conn->prepare("SELECT id, quantity FROM carts WHERE user_id = ? AND animal_id = ?");
+    if (!$check_stmt) {
+        error_log("Prepare statement failed (check_stmt): " . $conn->error);
+        return false;
+    }
+    $check_stmt->bind_param("ii", $user_id, $animal_id);
+    $check_stmt->execute();
+    $result = $check_stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        // Jika item sudah ada, perbarui kuantitasnya
+        $item = $result->fetch_assoc();
+        $new_quantity = $item['quantity'] + 1;
+        $update_stmt = $conn->prepare("UPDATE carts SET quantity = ? WHERE id = ?");
+        if (!$update_stmt) {
+            error_log("Prepare statement failed (update_stmt): " . $conn->error);
+            return false;
+        }
+        $update_stmt->bind_param("ii", $new_quantity, $item['id']);
+        return $update_stmt->execute();
+    } else {
+        // Jika item belum ada, tambahkan item baru ke keranjang
+        $insert_stmt = $conn->prepare("INSERT INTO carts (user_id, animal_id, quantity) VALUES (?, ?, 1)");
+        if (!$insert_stmt) {
+            error_log("Prepare statement failed (insert_stmt): " . $conn->error);
+            return false;
+        }
+        $insert_stmt->bind_param("ii", $user_id, $animal_id);
+        return $insert_stmt->execute();
+    }
+}
+
+// --- Fungsi-fungsi yang sudah ada sebelumnya (tetap dipertahankan) ---
+
+// Fungsi untuk mendapatkan semua paket qurban
+function getAllPaketQurban() {
+    global $conn;
+
+    $query = "SELECT * FROM animals ORDER BY type, price";
+    $result = $conn->query($query);
+
+    $paket = array();
+    while ($row = $result->fetch_assoc()) {
+        $paket[] = $row;
+    }
+
+    return $paket;
+}
+
+// Fungsi untuk mendapatkan paket qurban berdasarkan ID
+function getPaketQurbanById($id) {
+    global $conn;
+
+    $stmt = $conn->prepare("SELECT * FROM animals WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    return $result->fetch_assoc();
+}
+
+// Fungsi untuk mendapatkan paket qurban berdasarkan jenis hewan
+function getPaketQurbanByType($type) {
+    global $conn;
+
+    $stmt = $conn->prepare("SELECT * FROM animals WHERE type = ? ORDER BY price");
+    $stmt->bind_param("s", $type);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $paket = array();
+    while ($row = $result->fetch_assoc()) {
+        $paket[] = $row;
+    }
+
+    return $paket;
+}
+
+// Fungsi untuk mengurangi stok hewan qurban
+function reduceStock($animal_id, $quantity) {
+    global $conn;
+
+    $stmt = $conn->prepare("UPDATE animals SET stock = stock - ? WHERE id = ? AND stock >= ?");
+    $stmt->bind_param("iii", $quantity, $animal_id, $quantity);
+    $stmt->execute();
+
+    return $stmt->affected_rows > 0;
+}
+
+// Fungsi untuk menambah stok hewan qurban
+function increaseStock($animal_id, $quantity) {
+    global $conn;
+
+    $stmt = $conn->prepare("UPDATE animals SET stock = stock + ? WHERE id = ?");
+    $stmt->bind_param("ii", $quantity, $animal_id);
+    $stmt->execute();
+
+    return $stmt->affected_rows > 0;
+}
+
+// --- Penanganan permintaan HTTP ---
+$method = $_SERVER['REQUEST_METHOD'];
+
+switch ($method) {
+    case 'GET':
+        // Penanganan permintaan GET yang sudah ada
+        if (isset($_GET['id'])) {
+            $paket = getPaketQurbanById(clean_input($_GET['id']));
+            echo json_encode($paket);
+        } elseif (isset($_GET['type'])) {
+            $paket = getPaketQurbanByType(clean_input($_GET['type']));
+            echo json_encode($paket);
+        } else {
+            $paket = getAllPaketQurban();
+            echo json_encode($paket);
+        }
+        break;
+
+    case 'POST':
+        // Cek apakah permintaan adalah untuk 'add_to_cart'
+        // Data dikirim sebagai FormData, jadi gunakan $_POST
+        if (isset($_POST['action']) && $_POST['action'] === 'add_to_cart') {
+            // Pastikan pengguna sudah login
+            if (!isset($_SESSION['user_id'])) {
+                http_response_code(401); // Unauthorized
+                echo json_encode(['success' => false, 'message' => 'Anda harus login untuk menambahkan item ke keranjang.']);
+                exit;
+            }
+
+            $animal_id = isset($_POST['animal_id']) ? clean_input($_POST['animal_id']) : null;
+            $user_id = $_SESSION['user_id'];
+
+            if ($animal_id === null) {
+                http_response_code(400); // Bad Request
+                echo json_encode(['success' => false, 'message' => 'ID hewan tidak valid.']);
+                exit;
+            }
+
+            if (addToCart($conn, $user_id, $animal_id)) {
+                echo json_encode(['success' => true, 'message' => 'Item berhasil ditambahkan ke keranjang.']);
+            } else {
+                http_response_code(500); // Internal Server Error
+                echo json_encode(['success' => false, 'message' => 'Gagal menambahkan item ke keranjang. Silakan coba lagi.']);
+            }
+            exit; // Hentikan eksekusi setelah menangani permintaan add_to_cart
+        }
+
+        // Penanganan permintaan POST lainnya (misalnya reduce_stock, increase_stock)
+        // Ini diasumsikan dikirim dengan Content-Type: application/json, sehingga menggunakan file_get_contents
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        if (isset($data['action'])) {
+            switch ($data['action']) {
+                case 'reduce_stock':
+                    if (isset($data['animal_id']) && isset($data['quantity'])) {
+                        $success = reduceStock(clean_input($data['animal_id']), clean_input($data['quantity']));
+                        echo json_encode(['success' => $success]);
+                    } else {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'Parameter tidak valid untuk reduce_stock']);
+                    }
+                    break;
+
+                case 'increase_stock':
+                    if (isset($data['animal_id']) && isset($data['quantity'])) {
+                        $success = increaseStock(clean_input($data['animal_id']), clean_input($data['quantity']));
+                        echo json_encode(['success' => $success]);
+                    } else {
+                        http_response_code(400);
+                        echo json_encode(['error' => 'Parameter tidak valid untuk increase_stock']);
+                    }
+                    break;
+
+                default:
+                    http_response_code(400);
+                    echo json_encode(['error' => 'Aksi tidak valid']);
+            }
+        } else {
+            http_response_code(400);
+            echo json_encode(['error' => 'Parameter tidak valid']);
+        }
+        break;
+
+    default:
+        http_response_code(405); // Method Not Allowed
+        echo json_encode(['error' => 'Metode tidak diizinkan']);
+}
+
+$conn->close();
+?>
