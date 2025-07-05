@@ -190,4 +190,4 @@ require_once './services/konek.php';
     </div>
   </section>
   <!-- End FAQ-->
-  <?php include 'components/footers.php'; ?>
+  <?php include 'components/footer.php'; ?>

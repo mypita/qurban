@@ -8,6 +8,16 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] !== 'admin') {
     exit;
 }
 
+// Fungsi untuk membersihkan input (jika belum ada di konek.php)
+if (!function_exists('clean_input')) {
+    function clean_input($data) {
+        $data = trim($data);
+        $data = stripslashes($data);
+        $data = htmlspecialchars($data);
+        return $data;
+    }
+}
+
 // Fungsi untuk mendapatkan daftar pesanan
 function getOrders($conn)
 {
@@ -62,20 +72,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
 if (isset($_GET['delete'])) {
     $order_id = clean_input($_GET['delete']);
 
-    // Catat log admin sebelum menghapus
-    $log_stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, action, order_id, notes) VALUES (?, ?, ?, ?)");
-    $action = "Delete order";
-    $notes = "Order deleted by admin";
-    $log_stmt->bind_param("isis", $_SESSION['user_id'], $action, $order_id, $notes);
-    $log_stmt->execute();
+    // Mulai transaksi untuk memastikan integritas data
+    $conn->begin_transaction();
+    try {
+        // 1. Catat log admin sebelum menghapus
+        $log_stmt = $conn->prepare("INSERT INTO admin_logs (admin_id, action, order_id, notes) VALUES (?, ?, ?, ?)");
+        $action = "Delete order";
+        $notes = "Order deleted by admin";
+        $log_stmt->bind_param("isis", $_SESSION['user_id'], $action, $order_id, $notes);
+        $log_stmt->execute();
+        $log_stmt->close();
 
-    // Hapus pesanan
-    $delete_stmt = $conn->prepare("DELETE FROM orders WHERE id = ?");
-    $delete_stmt->bind_param("i", $order_id);
-    $delete_stmt->execute();
+        // 2. Hapus entri dari order_status_history yang terkait dengan pesanan ini
+        $delete_history_stmt = $conn->prepare("DELETE FROM order_status_history WHERE order_id = ?");
+        $delete_history_stmt->bind_param("i", $order_id);
+        $delete_history_stmt->execute();
+        $delete_history_stmt->close();
 
-    header("Location: list_pesanan.php?success=Pesanan berhasil dihapus");
-    exit;
+        // 3. Hapus item-item pesanan terkait dari tabel order_items
+        $delete_items_stmt = $conn->prepare("DELETE FROM order_items WHERE order_id = ?");
+        $delete_items_stmt->bind_param("i", $order_id);
+        $delete_items_stmt->execute();
+        $delete_items_stmt->close();
+
+        // 4. Hapus pesanan dari tabel orders
+        $delete_order_stmt = $conn->prepare("DELETE FROM orders WHERE id = ?");
+        $delete_order_stmt->bind_param("i", $order_id);
+        $delete_order_stmt->execute();
+        $delete_order_stmt->close();
+
+        // Commit transaksi jika semua berhasil
+        $conn->commit();
+        header("Location: list_pesanan.php?success=Pesanan berhasil dihapus");
+        exit;
+
+    } catch (mysqli_sql_exception $e) {
+        // Rollback transaksi jika ada kesalahan
+        $conn->rollback();
+        error_log("Error deleting order (ID: $order_id): " . $e->getMessage());
+        header("Location: list_pesanan.php?error=Gagal menghapus pesanan. Terjadi kesalahan database.");
+        exit;
+    }
 }
 
 $orders = getOrders($conn);
@@ -299,6 +336,9 @@ $orders = getOrders($conn);
                 <!-- [ sample-page ] start -->
                 <?php if (isset($_GET['success'])): ?>
                     <div class="alert alert-success"><?php echo htmlspecialchars($_GET['success']); ?></div>
+                <?php endif; ?>
+                <?php if (isset($_GET['error'])): ?>
+                    <div class="alert alert-danger"><?php echo htmlspecialchars($_GET['error']); ?></div>
                 <?php endif; ?>
 
                 <div class="col-md-12">
