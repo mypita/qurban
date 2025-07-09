@@ -389,7 +389,7 @@ require_once './services/konek.php';
             <div class="col-12 col-sm-6 col-md-4 mb-4 mb-md-0 text-center text-white" data-aos="fade-up"
               data-aos-delay="100">
               <div class="stat-item">
-                <h3 class="fs-1 fw-bold"><span class="purecounter" data-purecounter-start="0" data-purecounter-end="157"
+                <h3 class="fs-1 fw-bold"><span class="purecounter" data-purecounter-start="0" data-purecounter-end="0"
                     data-purecounter-duration="2">0</span><span>+</span></h3>
                 <p class="mb-0">Masjid Terbantu</p>
               </div>
@@ -398,14 +398,14 @@ require_once './services/konek.php';
               data-aos-delay="200">
               <div class="stat-item">
                 <h3 class="fs-1 fw-bold"> <span class="purecounter" data-purecounter-start="0"
-                    data-purecounter-end="5320" data-purecounter-duration="2">0</span><span>+</span></h3>
+                    data-purecounter-end="0" data-purecounter-duration="2">0</span><span>+</span></h3>
                 <p class="mb-0">Hewan Qurban</p>
               </div>
             </div>
             <div class="col-12 col-sm-6 col-md-4 mb-4 mb-md-0 text-center text-white" data-aos="fade-up"
               data-aos-delay="300">
               <div class="stat-item">
-                <h3 class="fs-1 fw-bold"><span class="purecounter" data-purecounter-start="0" data-purecounter-end="98"
+                <h3 class="fs-1 fw-bold"><span class="purecounter" data-purecounter-start="0" data-purecounter-end="100"
                     data-purecounter-duration="2">0</span><span>%</span></h3>
                 <p class="mb-0">Kepuasan Jamaah</p>
               </div>
